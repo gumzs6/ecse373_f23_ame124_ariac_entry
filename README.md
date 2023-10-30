@@ -1,7 +1,7 @@
-<h1>Lab 5: Ariac 2019 Part 1</h1>h1>
+<h1>Lab 5: Ariac 2019 Part 1</h1>
 
 <h2>Overview</h2>
-    <p>This package can launches the Ariac 2019 competition environemtn, locate the bin of the first product in the first shipment of the first order, give the location of a received order in terms for the logical_camera and arm1_base_link reference frames.</p>
+    <p>This package can launches the ARIAC 2019 competition environemtn, locate the bin of the first product in the first shipment of the first order, give the location of a received order in terms for the logical_camera and arm1_base_link reference frames.</p>
 
 <h2>Prior Setup</h2>
     <p>Open new terminal and configure ROS.</p>
