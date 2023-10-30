@@ -1,0 +1,5 @@
+<launch>
+    <include file="$(find ecse_373_ariac)/ecse_373_ariac/launch/ecse_373_ariac.launch" />
+    <include file="$(find cwru_ariac_2019)/osrf_gear/launch/sample_environment.launch" />
+    <node name="ariac_node" type="ariac_node" pkg="ariac_entry" />
+</launch>
