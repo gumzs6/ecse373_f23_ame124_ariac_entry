@@ -137,7 +137,7 @@ int main(int argc, char **argv)
   ROS_INFO_STREAM("First object in order: " << order_msg.shipments[0].products[0].type);
   ROS_INFO_STREAM("Storage unit: " << mat_loc.response);
 
-    
+      
   int service_call_succeeded;
   service_call_succeeded = begin_client.call(begin_comp);
 
