@@ -47,7 +47,9 @@
 
 
 std::vector<osrf_gear::Order> order_vector;
-osrf_gear::LogicalCameraImage log_cam;
+std::vector<osrf_gear::LogicalCameraImage> avg_vector;
+std::vector<osrf_gear::LogicalCameraImage> bin_vector;
+std::vector<osrf_gear::LogicalCameraImage> qcs_vector;
 osrf_gear::GetMaterialLocations mat_loc;
 std_srvs::Trigger begin_comp;
 osrf_gear::Order order_msg;
@@ -60,12 +62,54 @@ void orders_callback(const osrf_gear::Order::ConstPtr& order_msg)
 
 }
 
-void log_cam_callback(const osrf_gear::LogicalCameraImage image_msg)
+void avg1Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
 {
+  avg_vector[0] = *image_msg;   
+}
 
-  
-     // ROS_INFO_STREAM("Type: " << image_msg.models[idx].type << ", bin: " << << ", pose: " << image_msg.pose);
-    
+void avg2Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
+{
+  avg_vector[1] = *image_msg;   
+}
+
+void bin1Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
+{
+  bin_vector[0] = *image_msg;   
+}
+
+void bin2Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
+{
+  bin_vector[1] = *image_msg;
+}
+
+void bin3Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
+{
+  bin_vector[2] = *image_msg;   
+}
+
+void bin4Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
+{
+  bin_vector[3] = *image_msg;
+}
+
+void bin5Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
+{
+  bin_vector[4] = *image_msg;
+}
+
+void bin6Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
+{
+  bim_vector[5] = *image_msg;
+}
+
+void qcs1Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
+{ 
+  qcs_vector[0] = *image_msg;
+}
+
+void qcs2Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
+{
+  qcs_vector[1] = *image_msg;   
 }
   
 
@@ -85,7 +129,7 @@ int main(int argc, char **argv)
    * part of the ROS system.
    */
 // %Tag(INIT)%
-  ros::init(argc, argv, "ariac_node");
+  ros::init(argc, argv, "ariac_entry");
 // %EndTag(INIT)%
 
   /**
@@ -118,33 +162,33 @@ int main(int argc, char **argv)
   
   ros::Subscriber orders_sub = n.subscribe("/ariac/orders", 10, orders_callback);
   
-  ros::Subscriber logical_camera1_subscriber = n.subscribe("/ariac/logical_camera_1", 10, log_cam_callback);
-  ros::Subscriber logical_camera2_subscriber = n.subscribe("/ariac/logical_camera_2", 10, log_cam_callback);
-  ros::Subscriber logical_camera3_subscriber = n.subscribe("/ariac/logical_camera_3", 10, log_cam_callback);
-  ros::Subscriber logical_camera4_subscriber = n.subscribe("/ariac/logical_camera_4", 10, log_cam_callback);
-  ros::Subscriber logical_camera5_subscriber = n.subscribe("/ariac/logical_camera_5", 10, log_cam_callback);
-  ros::Subscriber logical_camera6_subscriber = n.subscribe("/ariac/logical_camera_6", 10, log_cam_callback);
-  ros::Subscriber logical_camera7_subscriber = n.subscribe("/ariac/logical_camera_7", 10, log_cam_callback);
-  ros::Subscriber logical_camera8_subscriber = n.subscribe("/ariac/logical_camera_8", 10, log_cam_callback);
-  ros::Subscriber logical_camera9_subscriber = n.subscribe("/ariac/logical_camera_9", 10, log_cam_callback);
-  ros::Subscriber logical_camera10_subscriber = n.subscribe("/ariac/logical_camera_10", 10, log_cam_callback);
+  ros::Subscriber logical_camera1_subscriber = n.subscribe("/ariac/logical_camera_agv1", 10, agv1Callback);
+  ros::Subscriber logical_camera2_subscriber = n.subscribe("/ariac/logical_camera_agv2", 10, agv2Callback);
+  ros::Subscriber logical_camera7_subscriber = n.subscribe("/ariac/logical_camera_bin1", 10, bin1Callback);
+  ros::Subscriber logical_camera8_subscriber = n.subscribe("/ariac/logical_camera_bin2", 10, bin2Callback);
+  ros::Subscriber logical_camera3_subscriber = n.subscribe("/ariac/logical_camera_bin3", 10, bin3Callback);
+  ros::Subscriber logical_camera4_subscriber = n.subscribe("/ariac/logical_camera_bin4", 10, bin4Callback);
+  ros::Subscriber logical_camera5_subscriber = n.subscribe("/ariac/logical_camera_bin5", 10, bin5Callback);
+  ros::Subscriber logical_camera6_subscriber = n.subscribe("/ariac/logical_camera_bin6", 10, bin6Callback);
+  ros::Subscriber logical_camera9_subscriber = n.subscribe("/ariac/quality_control_sensor_1", 10, qcs1Callback);
+  ros::Subscriber logical_camera10_subscriber = n.subscribe("/ariac/quality_control_sensor_2", 10, qcs2Callback);
 
-  ros::ServiceClient mat_loc_client = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_location");
+  ros::ServiceClient mat_loc_client = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_locations");
   ros::ServiceClient begin_client = n.serviceClient<std_srvs::Trigger>("/ariac/start_competition");
   
-  mat_loc_client.call(order_msg.shipments[0].products[0].type);
+  //mat_loc_client.call();
   
-  ROS_INFO_STREAM("First object in order: " << order_msg.shipments[0].products[0].type);
-  ROS_INFO_STREAM("Storage unit: " << mat_loc.response);
+  // ROS_INFO_STREAM("First object in order: " << order_msg.shipments[0].products[0].type);
+  // ROS_INFO_STREAM("Storage unit: " << mat_loc.response);
 
       
   int service_call_succeeded;
   service_call_succeeded = begin_client.call(begin_comp);
 
   if (!service_call_succeeded) {
-  ROS_ERROR("Competition service call failed!")
+  ROS_ERROR("Competition service call failed!");
 
-  ROS_ERROR("Competition service returned failure: " << begin_comp.response);
+  //ROS_ERROR("Competition service returned failure: " << begin_comp.response);
   } 
   else if (service_call_succeeded) {
   ROS_INFO_STREAM("Competition service called successfully");
