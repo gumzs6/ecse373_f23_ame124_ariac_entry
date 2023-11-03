@@ -45,21 +45,32 @@
 #include "geometry_msgs/TransformStamped.h"
 
 
-
+// receiving order message
 std::vector<osrf_gear::Order> order_vector;
+
+// to track product type and bin its in
+std::vector<osrf_gear::Order> pt_vector;
+std::vector<osrf_gear::Order> pb_vector;
+
+// logical cameras
 std::vector<osrf_gear::LogicalCameraImage> avg_vector;
 std::vector<osrf_gear::LogicalCameraImage> bin_vector;
 std::vector<osrf_gear::LogicalCameraImage> qcs_vector;
-osrf_gear::GetMaterialLocations mat_loc;
-std_srvs::Trigger begin_comp;
-osrf_gear::Order order_msg;
 
-void orders_callback(const osrf_gear::Order::ConstPtr& order_msg)
+// start comp
+int service_call_succeeded;
+std_srvs::Trigger begin_comp;
+
+// transformations
+tf2_ros::Buffer tfBuffer;
+tf2_ros::TransformListener tfListener(tfBuffer);
+geometry_msgs::TransformStamped tfStamped;
+geometry_msgs::PoseStamped part_pose, goal_pose;
+
+void orderCallback(const osrf_gear::Order::ConstPtr& order_msg)
 {
   order_vector.clear();
-
-  order_vector.push_back(*order_msg);  
-
+  order_vector.push_back(*order_msg);
 }
 
 void avg1Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
@@ -99,7 +110,7 @@ void bin5Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
 
 void bin6Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
 {
-  bim_vector[5] = *image_msg;
+  bin_vector[5] = *image_msg;
 }
 
 void qcs1Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
@@ -111,7 +122,74 @@ void qcs2Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
 {
   qcs_vector[1] = *image_msg;   
 }
+
+geometry_msgs::Pose getPose(const std::String& product_type, const osrf_gear::StorageUnit& stor_unit) 
+{
+      geometry_msgs::Pose product_pose;
+      osrf_gear::Model models;
+      std::string bin = stor_unit.unit_id;
   
+      char number = bin.at(3);
+      int binNum = number - '0';
+      
+      models = bin_vector[binNum - 1].models;
+
+      // for every model in the cameras list, see if the type matches the desired product type
+      for (const auto& model : models)
+        {
+          if (models.type == product.type) 
+          {
+             product_pose = models.pose;
+          }
+        }
+
+      return product_pose;
+}
+
+void getProducts(const osrf_gear::Order order_msg) 
+{
+  for (shipment : order_msg.shipments)
+  {
+    for (product : shipment.product)
+    {
+      // get product type
+      pt_vector.push_back(product.type);
+  
+      // get matieral location by setting the type to found product and returning the bins
+      osrf_gear::GetMaterialLocations mat_loc;
+      mat_loc.request.material_type = product.type;
+      mat_loc_client.call(mat_loc);
+  
+      // get bin location from material locations service
+      pb_vector.push_back(mat_loc.response.storage_units);
+
+      // get product type, bin, and pose
+      std::string bin = mat_loc.response.storage_units.unit_id;
+      part_pose.pose = getPose(product.type, bin);
+      ROS_INFO("Type: [%s], Bin: [%s], Pose: [%s] [%s] [%s]", product.type, mat_loc.response.storage_units.unit_id, part_pose.pose.position.x, part_pose.pose.position.y, part_pose.pose.position.z);
+    
+      // transformation between arm and logical camera frame
+      try
+      {
+        tfStamped = tfBuffer.lookupTransform("arm1_base_link", "logical_camera_" + bin + "_frame", ros::Time(0.0), ros::Duration(1.0));
+        ROS_DEBUG("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
+      }
+      catch (tf2::TransformException &ex)
+      {
+        ROS_ERROR("%s", ex.what());
+      }
+      
+      tf2::doTransform(part_pose, goal_pose, tfStamped);
+    
+      goal_pose.pose.position.z += 0.10;
+      goal_pose.pose.orientation.w = 0.707;
+      goal_pose.pose.orientation.x = 0.0;
+      goal_pose.pose.orientation.y = 0.707;
+      goal_pose.pose.orientation.z = 0.0;
+
+    }
+  }
+}
 
 /**
  * This tutorial demonstrates simple sending of messages over the ROS system.
@@ -160,7 +238,7 @@ int main(int argc, char **argv)
    */
 // %Tag(PUBLISHER)%
   
-  ros::Subscriber orders_sub = n.subscribe("/ariac/orders", 10, orders_callback);
+  ros::Subscriber orders_sub = n.subscribe("/ariac/orders", 10, orderCallback);
   
   ros::Subscriber logical_camera1_subscriber = n.subscribe("/ariac/logical_camera_agv1", 10, agv1Callback);
   ros::Subscriber logical_camera2_subscriber = n.subscribe("/ariac/logical_camera_agv2", 10, agv2Callback);
@@ -181,17 +259,18 @@ int main(int argc, char **argv)
   // ROS_INFO_STREAM("First object in order: " << order_msg.shipments[0].products[0].type);
   // ROS_INFO_STREAM("Storage unit: " << mat_loc.response);
 
-      
-  int service_call_succeeded;
+  // start_competition service
+  
   service_call_succeeded = begin_client.call(begin_comp);
-
   if (!service_call_succeeded) {
   ROS_ERROR("Competition service call failed!");
-
-  //ROS_ERROR("Competition service returned failure: " << begin_comp.response);
   } 
   else if (service_call_succeeded) {
   ROS_INFO_STREAM("Competition service called successfully");
+  }
+  else 
+  {
+  ROS_WARN("Competition service returned failure: %s", begin_comp.response.message.c_str());
   }
 // %EndTag(PUBLISHER)%
 
@@ -212,32 +291,20 @@ int main(int argc, char **argv)
      * This is a message object. You stuff it with data, and then publish it.
      */
 // %Tag(FILL_MESSAGE)%
+    order_vector.clear();
+    avg_vector.clear();
+    bin_vector.clear();
+    qcs_vector.clear();
+    pb_vector.clear();
+    pt_vector.clear();
 
-    tf2_ros::Buffer tfBuffer;
-    tf2_ros::TransformListener tfListener(tfBuffer);
+    for (const auto& order : order_vector) 
+      {
+        getProducts(&order);
+      }
+
+    ROS_INFO("First product has type [%s] and can be found in bin [%s]", pt_vector.front(), pb_vector.front().front().unit_id);
     
-    geometry_msgs::TransformStamped tfStamped;
-    geometry_msgs::PoseStamped part_pose, goal_pose;
-
-    try
-    {
-      tfStamped = tfBuffer.lookupTransform("arm1_base_link", "logical_camera_bin4_frame", ros::Time(0.0), ros::Duration(1.0));
-      ROS_DEBUG("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
-    }
-    catch (tf2::TransformException &ex)
-    {
-      ROS_ERROR("%s", ex.what());
-    }
-
-    part_pose.pose = log_cam.pose;
-    tf2::doTransform(part_pose, goal_pose, tfStamped);
-
-    goal_pose.pose.position.z += 0.10;
-    goal_pose.pose.orientation.w = 0.707;
-    goal_pose.pose.orientation.x = 0.0;
-    goal_pose.pose.orientation.y = 0.707;
-    goal_pose.pose.orientation.z = 0.0;
-
 // %EndTag(FILL_MESSAGE)%
 
 // %Tag(ROSCONSOLE)%
