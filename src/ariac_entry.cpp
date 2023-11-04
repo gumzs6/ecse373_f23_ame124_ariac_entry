@@ -49,11 +49,11 @@
 std::vector<osrf_gear::Order> order_vector;
 
 // to track product type and bin its in
-std::vector<osrf_gear::Order> pt_vector;
-std::vector<osrf_gear::Order> pb_vector;
+std::vector<std::string> pt_vector;
+std::vector<std::vector<osrf_gear::StorageUnit>> pb_vector;
 
 // logical cameras
-std::vector<osrf_gear::LogicalCameraImage> avg_vector;
+std::vector<osrf_gear::LogicalCameraImage> agv_vector;
 std::vector<osrf_gear::LogicalCameraImage> bin_vector;
 std::vector<osrf_gear::LogicalCameraImage> qcs_vector;
 
@@ -61,26 +61,20 @@ std::vector<osrf_gear::LogicalCameraImage> qcs_vector;
 int service_call_succeeded;
 std_srvs::Trigger begin_comp;
 
-// transformations
-tf2_ros::Buffer tfBuffer;
-tf2_ros::TransformListener tfListener(tfBuffer);
-geometry_msgs::TransformStamped tfStamped;
-geometry_msgs::PoseStamped part_pose, goal_pose;
-
 void orderCallback(const osrf_gear::Order::ConstPtr& order_msg)
 {
   order_vector.clear();
   order_vector.push_back(*order_msg);
 }
 
-void avg1Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
+void agv1Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
 {
-  avg_vector[0] = *image_msg;   
+  agv_vector[0] = *image_msg;   
 }
 
-void avg2Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
+void agv2Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
 {
-  avg_vector[1] = *image_msg;   
+  agv_vector[1] = *image_msg;   
 }
 
 void bin1Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
@@ -123,10 +117,10 @@ void qcs2Callback(const osrf_gear::LogicalCameraImage::ConstPtr& image_msg)
   qcs_vector[1] = *image_msg;   
 }
 
-geometry_msgs::Pose getPose(const std::String& product_type, const osrf_gear::StorageUnit& stor_unit) 
+geometry_msgs::Pose getPose(const std::string& product_type, const osrf_gear::StorageUnit& stor_unit) 
 {
       geometry_msgs::Pose product_pose;
-      osrf_gear::Model models;
+      std::vector<osrf_gear::Model> models;
       std::string bin = stor_unit.unit_id;
   
       char number = bin.at(3);
@@ -137,38 +131,47 @@ geometry_msgs::Pose getPose(const std::String& product_type, const osrf_gear::St
       // for every model in the cameras list, see if the type matches the desired product type
       for (const auto& model : models)
         {
-          if (models.type == product.type) 
+          if (model.type == product_type) 
           {
-             product_pose = models.pose;
+             product_pose = model.pose;
           }
         }
 
       return product_pose;
 }
 
-void getProducts(const osrf_gear::Order order_msg) 
+void getProducts(const osrf_gear::Order order_msg, ros::ServiceClient *mat_loc_client) 
 {
-  for (shipment : order_msg.shipments)
+  for (const auto& shipment : order_msg.shipments)
   {
-    for (product : shipment.product)
+    for (const auto& product : shipment.products)
     {
+
+      tf2_ros::Buffer tfBuffer;
+      tf2_ros::TransformListener tfListener(tfBuffer);
+      geometry_msgs::TransformStamped tfStamped;
+      geometry_msgs::PoseStamped part_pose, goal_pose;
+
       // get product type
       pt_vector.push_back(product.type);
   
       // get matieral location by setting the type to found product and returning the bins
       osrf_gear::GetMaterialLocations mat_loc;
       mat_loc.request.material_type = product.type;
-      mat_loc_client.call(mat_loc);
+      mat_loc_client->call(mat_loc);
   
       // get bin location from material locations service
       pb_vector.push_back(mat_loc.response.storage_units);
 
       // get product type, bin, and pose
-      std::string bin = mat_loc.response.storage_units.unit_id;
-      part_pose.pose = getPose(product.type, bin);
-      ROS_INFO("Type: [%s], Bin: [%s], Pose: [%s] [%s] [%s]", product.type, mat_loc.response.storage_units.unit_id, part_pose.pose.position.x, part_pose.pose.position.y, part_pose.pose.position.z);
+      std::string bin = mat_loc.response.storage_units.front().unit_id;
+      part_pose.pose = getPose(product.type, mat_loc.response.storage_units.front());
+      ROS_INFO("Type: [%s], Bin: [%s], Pose: [%f] [%f] [%f]", product.type.c_str(), mat_loc.response.storage_units.front().unit_id.c_str(), part_pose.pose.position.x, part_pose.pose.position.y, part_pose.pose.position.z);
     
       // transformation between arm and logical camera frame
+
+      
+
       try
       {
         tfStamped = tfBuffer.lookupTransform("arm1_base_link", "logical_camera_" + bin + "_frame", ros::Time(0.0), ros::Duration(1.0));
@@ -253,15 +256,15 @@ int main(int argc, char **argv)
 
   ros::ServiceClient mat_loc_client = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_locations");
   ros::ServiceClient begin_client = n.serviceClient<std_srvs::Trigger>("/ariac/start_competition");
-  
-  //mat_loc_client.call();
-  
-  // ROS_INFO_STREAM("First object in order: " << order_msg.shipments[0].products[0].type);
-  // ROS_INFO_STREAM("Storage unit: " << mat_loc.response);
 
   // start_competition service
-  
+  if (!begin_client.exists()) {
+    ROS_WARN("WAiting for the compeition to be ready...");
+    begin_client.waitForExistence();
+    ROS_WARN("Compeition ready.");
+  }
   service_call_succeeded = begin_client.call(begin_comp);
+
   if (!service_call_succeeded) {
   ROS_ERROR("Competition service call failed!");
   } 
@@ -292,7 +295,7 @@ int main(int argc, char **argv)
      */
 // %Tag(FILL_MESSAGE)%
     order_vector.clear();
-    avg_vector.clear();
+    agv_vector.clear();
     bin_vector.clear();
     qcs_vector.clear();
     pb_vector.clear();
@@ -300,10 +303,10 @@ int main(int argc, char **argv)
 
     for (const auto& order : order_vector) 
       {
-        getProducts(&order);
+        getProducts(order, &mat_loc_client);
       }
 
-    ROS_INFO("First product has type [%s] and can be found in bin [%s]", pt_vector.front(), pb_vector.front().front().unit_id);
+    ROS_INFO("First product has type [%s] and can be found in [%s]", pt_vector.front().c_str(), pb_vector.front().front().unit_id.c_str());
     
 // %EndTag(FILL_MESSAGE)%
 
