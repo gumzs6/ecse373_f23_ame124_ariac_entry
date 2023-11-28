@@ -11,6 +11,8 @@ find_package(catkin REQUIRED COMPONENTS
   ecse_373_ariac
   roscpp
   rviz
+  ik_service
+  ur_kinematics
 )
 
 ## System dependencies are found with CMake's conventions
