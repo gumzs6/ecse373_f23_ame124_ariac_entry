@@ -58,7 +58,7 @@
   <exec_depend>ecse_373_ariac</exec_depend>
   <exec_depend>roscpp</exec_depend>
   <exec_depend>rviz</exec_depend>
-
+  <depend>actionlib</depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>

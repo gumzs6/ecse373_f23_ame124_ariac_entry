@@ -47,6 +47,9 @@
 #include "sensor_msgs/JointState.h"
 #include "trajectory_msgs/JointTrajectory.h"
 #include "ur_kinematics/ur_kin.h"
+#include "actionlib/client/simple_action_client.h"
+#include "actionlib/client/terminal_state.h"
+#include "control_msgs/FollowJointTrajectoryAction.h"
 
 // receiving order message
 std::vector<osrf_gear::Order> order_vector;
@@ -56,6 +59,9 @@ ros::ServiceClient mat_loc_client;
 
 //inverse kinematic service
 ros::ServiceClient ik_client;
+
+ros::Publisher trajectory_pub;
+control_msgs::FollowJointTrajectoryAction joint_trajectory_as;
 
 // camera to robot transformations
 tf2_ros::Buffer tfBuffer;
@@ -92,6 +98,25 @@ void jointStatesCallback(const sensor_msgs::JointState::ConstPtr& joint_msg)
   joint_states = *joint_msg;
 }
 
+// callback when goal becomes active
+void goalACtiveCallback() {
+  //actionlib::SimpleClientGoalState goal_state = trajectory_ac.getState();
+  //ROS_INFO("TrajectoryFollow in state: [%s]", goal_state.toString().c_str());
+}
+
+// callback when feedback provided
+void feedbackCallback(const control_msgs::FollowJointTrajectoryFeedbackConstPtr& fb) {
+  //actionlib::SimpleClientGoalState goal_state = trajectory_ac.getState();
+  //ROS_INFO("TrajectoryFollow in state: [%s]", goal_state.toString().c_str());
+}
+
+// callback when action complete and provides result
+void resultCallback(const control_msgs::FollowJointTrajectoryResultConstPtr& res) {
+  //actionlib::SimpleClientGoalState goal_state = trajectory_ac.getState();
+  //ROS_INFO("TrajectoryFollow in state: [%s]", goal_state.toString().c_str());
+}
+
+
 trajectory_msgs::JointTrajectory jointTrajectorySetup(trajectory_msgs::JointTrajectory joint_trajectory) 
 {
   
@@ -118,7 +143,7 @@ trajectory_msgs::JointTrajectory jointTrajectorySetup(trajectory_msgs::JointTraj
   
 }
 
-void armMovement(geometry_msgs::PoseStamped desired)
+void armTrajectory()
 {
   trajectory_msgs::JointTrajectory joint_trajectory;
 
@@ -158,7 +183,9 @@ void armMovement(geometry_msgs::PoseStamped desired)
     // How long to take for the movement.
     joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
     
+    joint_trajectory_as.action_goal.goal.trajectory = joint_trajectory;
 
+    trajectory_pub.publish(joint_trajectory);
  }
 
 void getPose(const std::string& product_type, const std::string& bin) 
@@ -185,9 +212,10 @@ void getPose(const std::string& product_type, const std::string& bin)
       goal_pose.pose.orientation.y = 0.707;
       goal_pose.pose.orientation.z = 0.0;  
 
+      armTrajectory();
+
       ROS_WARN_STREAM("Pose in reference frame of robot: \n" << goal_pose.pose);
       
-      armMovement(goal_pose);
   }
 
 void orderCallback(const osrf_gear::Order::ConstPtr& order_msg)
@@ -288,9 +316,11 @@ int main(int argc, char **argv)
   ros::Subscriber logical_camera10_subscriber = n.subscribe("/ariac/quality_control_sensor_2", 10, logCamCallback);
 
   ros::Subscriber joint_states_subscriber = n.subscribe("/ariac/arm1/joint_states", 10, jointStatesCallback);
-  
+  trajectory_pub = n.advertise<trajectory_msgs::JointTrajectory>("ariac/arm1/arm/command", 10);
+
+  actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> trajectory_ac("ariac/arm1/arm/follow_joint_trajectory", true);  
+
   ik_client = n.serviceClient<ik_service::PoseIK>("/ik_service");
-  
   
   mat_loc_client = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_locations");
 
