@@ -65,8 +65,6 @@ control_msgs::FollowJointTrajectoryAction joint_trajectory_as;
 
 // camera to robot transformations
 tf2_ros::Buffer tfBuffer;
-geometry_msgs::TransformStamped tfStamped;
-geometry_msgs::PoseStamped part_pose, goal_pose;
 
 // current state of joints of robot
 sensor_msgs::JointState joint_states;
@@ -143,9 +141,12 @@ trajectory_msgs::JointTrajectory jointTrajectorySetup(trajectory_msgs::JointTraj
   
 }
 
-void armTrajectory()
+void armTrajectory(geometry_msgs::PoseStamped goal_pose, double goal_pose_z)
 {
+    
   trajectory_msgs::JointTrajectory joint_trajectory;
+  double q_sols[8][6];
+  goal_pose.pose.position.z += goal_pose_z;
 
   joint_trajectory = jointTrajectorySetup(joint_trajectory);
 
@@ -168,28 +169,44 @@ void armTrajectory()
     // Set the end point for the movement
     joint_trajectory.points[1].positions.resize(joint_trajectory.joint_names.size());
     
-    // Set the linear_arm_actuator_joint from joint_states because not part of the ik sols
-    joint_trajectory.points[1].positions[0] = joint_states.position[1];
-    
+    // Set the linear_arm_actuator_joint (move base) from joint_states because not part of the ik sols
+    joint_trajectory.points[1].positions[0] = goal_pose.pose.position.y - 0.5;
+
     ik_pose.request.part_pose = goal_pose.pose;
     ik_client.call(ik_pose);
+
+    for (int indx = 0; indx < 8; indx++) 
+    {
+      for (int indy = 0; indy < 6; indy++) {
+        q_sols[indx][indy] = ik_pose.response.joint_solutions[indx].joint_angles[indy];
+      }
+    }
 
     // The actuators are commanded in an odd order, enter the joint positions in the correct positions
     for (int indy = 0; indy < 6; indy++) 
     {
-      joint_trajectory.points[1].positions[indy + 1] = ik_pose.response.joint_solutions.front().joint_angles.at(indy);
+      joint_trajectory.points[1].positions[indy + 1] = q_sols[q_sols_indx][indy];
     }
 
+    joint_trajectory.points[1].positions[5] = 4.71;
+
     // How long to take for the movement.
-    joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
+    joint_trajectory.points[1].time_from_start = ros::Duration(10.0);
     
-    joint_trajectory_as.action_goal.goal.trajectory = joint_trajectory;
+    // joint_trajectory_as.action_goal.goal.trajectory = joint_trajectory;
 
     trajectory_pub.publish(joint_trajectory);
- }
+
+    ros::Duration(joint_trajectory.points[1].time_from_start).sleep();
+
+}
+ 
 
 void getPose(const std::string& product_type, const std::string& bin) 
  {
+
+      geometry_msgs::TransformStamped tfStamped;
+      geometry_msgs::PoseStamped part_pose, goal_pose;
 
       // transformation between arm and logical camera frame
       try
@@ -203,7 +220,7 @@ void getPose(const std::string& product_type, const std::string& bin)
       }
 
       part_pose.pose = cam_images[bin].models[1].pose;
-      
+
       tf2::doTransform(part_pose, goal_pose, tfStamped);
 
       goal_pose.pose.position.z += 0.10;
@@ -212,9 +229,12 @@ void getPose(const std::string& product_type, const std::string& bin)
       goal_pose.pose.orientation.y = 0.707;
       goal_pose.pose.orientation.z = 0.0;  
 
-      armTrajectory();
-
+      ROS_WARN_STREAM("Type: " << product_type.c_str() << "\nBin: " << bin.c_str() << "\nPose in frame of camera:\n" << part_pose.pose);
       ROS_WARN_STREAM("Pose in reference frame of robot: \n" << goal_pose.pose);
+
+      armTrajectory(goal_pose, 0.0);
+      armTrajectory(goal_pose, -0.2);
+      armTrajectory(goal_pose, 0.20);
       
   }
 
@@ -233,11 +253,9 @@ void orderCallback(const osrf_gear::Order::ConstPtr& order_msg)
       mat_loc_client.call(mat_loc);
       std::string bin = mat_loc.response.storage_units.front().unit_id;
 
-      ROS_WARN_STREAM("Type: " << product.type.c_str() << "\nBin: " << bin.c_str() << "\nPose in frame of camera:\n" << product.pose);
-
       getPose(product.type, bin);
+    }
   }
-}
 }
 
 void getFirstProduct() 
@@ -320,7 +338,7 @@ int main(int argc, char **argv)
 
   actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> trajectory_ac("ariac/arm1/arm/follow_joint_trajectory", true);  
 
-  ik_client = n.serviceClient<ik_service::PoseIK>("/ik_service");
+  ik_client = n.serviceClient<ik_service::PoseIK>("/pose_ik");
   
   mat_loc_client = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_locations");
 
@@ -396,7 +414,7 @@ int main(int argc, char **argv)
       getFirstProduct();
     }
 
-    ROS_INFO_STREAM_THROTTLE(10, joint_states);
+    //ROS_INFO_STREAM_THROTTLE(10, joint_states);
 
 // %EndTag(FILL_MESSAGE)%
 
